@@ -18,6 +18,7 @@ class DataGenerator {
         return {
             success: { number: '4242424242424242', expiry: '12/26', cvc: '123' },
             declined: { number: '4000000000000002', expiry: '12/26', cvc: '123' },
+            insufficientFunds: { number: '4000000000000006', expiry: '12/26', cvc: '123' },
             expired: { number: '4242424242424241', expiry: '01/10', cvc: '123' }
         };
     }
@@ -171,7 +172,8 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
     });
 
     const failureScenarios = [
-        { name: 'Declined Card', card: DataGenerator.getCards().declined, expectedError: 'declined' }
+        { name: 'Declined Card', card: DataGenerator.getCards().declined, expectedError: 'declined' },
+        { name: 'Expired Card', card: { number: '4000000000000069', expiry: '12/26', cvc: '123' }, expectedError: 'expired' }
     ];
 
     for (const scenario of failureScenarios) {
