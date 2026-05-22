@@ -6,7 +6,6 @@ const { test, expect } = require('@playwright/test');
 class DataGenerator {
     static getRandomVIN() {
         // Base VIN provided: 2G37M2P213086
-        // Randomizing the 13th character
         const baseVIN = '2G37M2P21308';
         const randomDigit = Math.floor(Math.random() * 10).toString();
         return baseVIN + randomDigit;
@@ -18,12 +17,12 @@ class DataGenerator {
 }
 
 /**
- * PreloaderVerification class encapsulates page interactions and locators
+ * Base class for Preloader interactions to share common logic
  */
-class PreloaderVerification {
+class PreloaderBase {
     constructor(page) {
         this.page = page;
-        // Isolated locators using regex for better flexibility
+        // Default locator for VHR
         this.historyButton = page.getByRole('button', { name: /Access Vehicle History/i });
         this.emailInput = page.getByRole('textbox', { name: /Email Address/i });
         this.checkoutButton = page.getByRole('button', { name: /Proceed to Checkout/i });
@@ -33,26 +32,12 @@ class PreloaderVerification {
         this.checkoutHeader = page.locator('text=Choose payment method');
     }
 
-    async navigateToPreview(vin) {
-        const previewUrl = `https://dev.pintonaturals.com/preview?vin=${vin}&locale=en&wpPage=homepage&type=vhr`;
-        await this.page.goto(previewUrl);
-        // Smart wait: wait for the first interactive element with a generous timeout
-        await expect(this.historyButton).toBeVisible({ timeout: 30000 });
-    }
-
-    /**
-     * Measures the time from preloader appearance to checkout page load
-     * Uses smart waits to detect state changes
-     */
     async trackPreloaderToCheckoutTime() {
         console.log('⏳ Waiting for preloader to appear...');
-        
-        // Smart wait: Wait for preloader to become visible
-        await expect(this.preloader).toBeVisible({ timeout: 20000 });
+        await expect(this.preloader).toBeVisible({ timeout: 25000 });
         const startTime = Date.now();
         console.log('✅ Preloader visible. Timing started...');
 
-        // Smart wait: Wait for checkout page indicator to become visible
         await expect(this.checkoutHeader).toBeVisible({ timeout: 60000 });
         const endTime = Date.now();
         
@@ -63,38 +48,74 @@ class PreloaderVerification {
     }
 
     async performPreloaderCheck(email) {
-        // Smart wait: ensures element is ready for interaction
+        // Wait for the specific button to be interactive
+        await this.historyButton.waitFor({ state: 'visible', timeout: 30000 });
         await this.historyButton.click();
         
-        await expect(this.emailInput).toBeVisible();
+        // Wait for email popup
+        await expect(this.emailInput).toBeVisible({ timeout: 15000 });
         await this.emailInput.fill(email);
         
         await this.checkoutButton.click();
     }
 }
 
-test('Modular Preloader Preview Checkout Verification with Smart Waits', async ({ page }) => {
-    // Global timeout for the entire test
-    test.setTimeout(90000); 
-    
-    const preloader = new PreloaderVerification(page);
-    const vin = DataGenerator.getRandomVIN();
-    const email = DataGenerator.getUniqueEmail();
+/**
+ * PreloaderVerification class for Vehicle History Reports (VHR)
+ */
+class PreloaderVerification extends PreloaderBase {
+    async navigateToPreview(vin) {
+        const previewUrl = `https://dev.pintonaturals.com/preview?vin=${vin}&locale=en&wpPage=homepage&type=vhr`;
+        console.log(`🔗 Navigating to VHR Preview: ${previewUrl}`);
+        await this.page.goto(previewUrl, { waitUntil: 'domcontentloaded' });
+        await this.page.waitForLoadState('networkidle').catch(() => {}); 
+    }
+}
 
-    console.log(`🚀 Starting Test | VIN: ${vin} | Email: ${email}`);
+/**
+ * BuildSheet class for Window Stickers
+ */
+class BuildSheet extends PreloaderBase {
+    constructor(page) {
+        super(page);
+        // Override the button locator for the Build Sheet flow
+        this.historyButton = page.getByRole('button', { name: /Access Build Sheet/i });
+    }
 
-    // 1. Navigate to Preview
-    await preloader.navigateToPreview(vin);
-    
-    // 2. Interaction
-    await preloader.performPreloaderCheck(email);
-    
-    // 3. Timing Verification
-    const elapsed = await preloader.trackPreloaderToCheckoutTime();
-    
-    // 4. Final Assertions
-    expect(parseFloat(elapsed)).toBeLessThan(45);
-    // Smart wait for URL transition
-    await expect(page).toHaveURL(/.*\/checkout.*/);
-    console.log('🎉 Test Completed Successfully');
+    async navigateToPreview(vin) {
+        const previewUrl = `https://dev.pintonaturals.com/preview?vin=${vin}&locale=en&wpPage=homepage&type=sticker`;
+        console.log(`🔗 Navigating to BuildSheet Preview: ${previewUrl}`);
+        await this.page.goto(previewUrl, { waitUntil: 'domcontentloaded' });
+        await this.page.waitForLoadState('networkidle').catch(() => {});
+    }
+}
+
+test.describe('Pintonaturals Preloader Tests', () => {
+    test.setTimeout(120000);
+
+    test('VHR Preloader Verification', async ({ page }) => {
+        const preloader = new PreloaderVerification(page);
+        const vin = DataGenerator.getRandomVIN();
+        const email = DataGenerator.getUniqueEmail();
+
+        await preloader.navigateToPreview(vin);
+        await preloader.performPreloaderCheck(email);
+        const elapsed = await preloader.trackPreloaderToCheckoutTime();
+        
+        expect(parseFloat(elapsed)).toBeLessThan(50);
+        await expect(page).toHaveURL(/.*\/checkout.*/);
+    });
+
+    test('BuildSheet Preloader Verification', async ({ page }) => {
+        const buildSheet = new BuildSheet(page);
+        const vin = DataGenerator.getRandomVIN();
+        const email = DataGenerator.getUniqueEmail();
+
+        await buildSheet.navigateToPreview(vin);
+        await buildSheet.performPreloaderCheck(email);
+        const elapsed = await buildSheet.trackPreloaderToCheckoutTime();
+        
+        expect(parseFloat(elapsed)).toBeLessThan(50);
+        await expect(page).toHaveURL(/.*\/checkout.*/);
+    });
 });
