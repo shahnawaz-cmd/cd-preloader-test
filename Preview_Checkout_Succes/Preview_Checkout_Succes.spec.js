@@ -19,6 +19,7 @@ class DataGenerator {
             success: { number: '4242424242424242', expiry: '12/26', cvc: '123' },
             declined: { number: '4000000000000002', expiry: '12/26', cvc: '123' },
             insufficientFunds: { number: '4000000000000006', expiry: '12/26', cvc: '123' },
+            stolen: { number: '4000000000009979', expiry: '12/26', cvc: '123' },
             expired: { number: '4242424242424241', expiry: '01/10', cvc: '123' }
         };
     }
@@ -42,7 +43,7 @@ class PreloaderBase {
         
         // Refined error locator: Targets typical error containers and filters for relevant keywords
         this.stripeError = page.locator('#error-message, .StripeElement--invalid, [role="alert"], .error-text')
-            .filter({ hasText: /card|declined|expired|invalid|number|cvc|expiry/i });
+            .filter({ hasText: /card|declined|expired|invalid|number|cvc|expiry|stolen/i });
     }
 
     async setupApiCaptures() {
@@ -173,7 +174,8 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
 
     const failureScenarios = [
         { name: 'Declined Card', card: DataGenerator.getCards().declined, expectedError: 'declined' },
-        { name: 'Expired Card', card: { number: '4000000000000069', expiry: '12/26', cvc: '123' }, expectedError: 'expired' }
+        { name: 'Insufficient Funds', card: DataGenerator.getCards().insufficientFunds, expectedError: 'declined' },
+        { name: 'Stolen Card', card: DataGenerator.getCards().stolen, expectedError: 'declined' }
     ];
 
     for (const scenario of failureScenarios) {
