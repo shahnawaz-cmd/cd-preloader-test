@@ -1,0 +1,13 @@
+{
+  "name": "cd_preloader",
+  "version": "1.0.0",
+  "description": "Playwright automation for CD Preloader Verification",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:ui": "npx playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0"
+  }
+}
