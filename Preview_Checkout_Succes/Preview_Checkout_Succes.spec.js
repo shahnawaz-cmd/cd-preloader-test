@@ -241,6 +241,18 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
         await vhr.verifyRedirectionAndSuccess();
     });
 
+    test('VHR: Full Checkout SUCCESS Flow - Canada', async ({ page }) => {
+        const vhr = new PreloaderVerification(page);
+        await vhr.setupApiCaptures();
+        await vhr.navigateToPreview(DataGenerator.getRandomVIN());
+        await vhr.performPreloaderCheck(DataGenerator.getUniqueEmail());
+        await vhr.trackPreloaderToCheckoutTime();
+
+        // Perform checkout with Canadian postal code
+        await vhr.performCheckout('Shahnawaz', 'K1A 0B1', DataGenerator.getCards().success);
+        await vhr.verifyRedirectionAndSuccess();
+    });
+
     test('BuildSheet: Full Checkout SUCCESS Flow', async ({ page }) => {
         const sticker = new BuildSheet(page);
         await sticker.setupApiCaptures();
@@ -381,6 +393,33 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
         await sticker.performCheckout('test subscription', '748965', DataGenerator.getCards().success, page.getByRole('button', { name: /Subscribe \$/i }));
         await sticker.verifyRedirectionAndSuccess();
     });
+
+    // test('Same-session duplicate purchase', async ({ page }) => {
+    //     const vhr = new PreloaderVerification(page);
+    //     await vhr.setupApiCaptures();
+    //     const vin = '2G37M2P213088'; // Use a specific VIN to ensure reproducibility
+    //     const email = DataGenerator.getUniqueEmail();
+
+    //     // 1. First Purchase
+    //     await vhr.navigateToPreview(vin);
+    //     await vhr.performPreloaderCheck(email);
+    //     await vhr.trackPreloaderToCheckoutTime();
+    //     await vhr.performCheckout('Shahnawaz', '26556', DataGenerator.getCards().success);
+    //     await vhr.verifyRedirectionAndSuccess();
+
+    //     // 2. Duplicate Attempt in same session with the EXACT same URL (VIN + type)
+    //     console.log('🔄 Attempting duplicate purchase for same VIN in same session...');
+    //     const duplicateUrl = `https://dev.pintonaturals.com/preview?vin=${vin}&locale=en&wpPage=homepage&type=vhr`;
+    //     await page.goto(duplicateUrl);
+        
+    //     // Wait for the button to appear or redirect to happen
+    //     await vhr.historyButton.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+    //     await vhr.historyButton.click();
+        
+    //     // Verify we are in member area (checking URL)
+    //     await expect(page).toHaveURL(/.*members\/search.*/, { timeout: 15000 });
+    //     console.log('✅ PASS — User was not prompted to checkout again (duplicate blocked/session maintained)');
+    // });
 
     const failureScenarios = [
         { name: 'Declined Card', card: DataGenerator.getCards().declined, expectedError: 'declined' },
