@@ -278,9 +278,54 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
         await vhr.zipInput.fill('74900');
         await vhr.payButton.click();
 
-        // 2. Robust 3DS Challenge handling via polling
-        console.log('🛡️ Handling 3DS Challenge via polling...');
-        let clicked = false;
+        // 4. Handle 3DS Challenge via Event-Driven Polling
+        console.log('🛡️ Handling 3DS Challenge via robust polling...');
+        await new Promise((resolve) => {
+            const check = async () => {
+                // Re-fetch frames on every poll to handle frame refreshes
+                for (const frame of page.frames()) {
+                    try {
+                        const completeButton = frame.getByRole('button', { name: 'Complete' });
+                        if (await completeButton.isVisible()) {
+                            await completeButton.click();
+                            console.log('✅ 3DS "Complete" button clicked.');
+                            return resolve();
+                        }
+                    } catch (e) {
+                        // Ignore detached frame errors here, the loop will continue to the next frame
+                        continue;
+                    }
+                }
+            };
+            page.on('frameattached', check);
+            const interval = setInterval(check, 1000);
+            setTimeout(() => { clearInterval(interval); resolve(); }, 60000);
+        });
+
+        await vhr.verifyRedirectionAndSuccess();
+        });
+
+    test('VHR: Checkout FAILURE with 3D Secure', async ({ page }) => {
+        const vhr = new PreloaderVerification(page);
+        await vhr.setupApiCaptures();
+        await vhr.navigateToPreview(DataGenerator.getRandomVIN());
+        await vhr.performPreloaderCheck(DataGenerator.getUniqueEmail());
+        await vhr.trackPreloaderToCheckoutTime();
+
+        // 1. Fill Name
+        console.log('🛍️ Filling checkout details...');
+        await page.getByRole('textbox', { name: 'Enter your name' }).click();
+        await page.getByRole('textbox', { name: 'Enter your name' }).fill('Test failure');
+
+        // 2. Fill Stripe card details
+        await vhr.fillStripeDetails({ number: '4000 0082 6000 3178', expiry: '02 / 66', cvc: '265' });
+        await vhr.zipInput.fill('74900');
+        
+        // 3. Pay
+        await vhr.payButton.click();
+
+        // 3. Handle 3DS Challenge via Event-Driven Polling
+        console.log('🛡️ Handling 3DS Challenge via robust polling...');
         await new Promise((resolve) => {
             const check = async () => {
                 for (const f of page.frames()) {
@@ -288,8 +333,7 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
                         const el = await f.getByRole('button', { name: 'Complete' });
                         if (await el.isVisible()) {
                             await el.click();
-                            clicked = true;
-                            console.log(`✅ 3DS 'Complete' clicked in frame: ${f.url().substring(0, 50)}`);
+                            console.log('✅ 3DS "Complete" button clicked.');
                             return resolve();
                         }
                     } catch (_) {}
@@ -300,9 +344,10 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
             setTimeout(() => { clearInterval(interval); resolve(); }, 60000);
         });
 
-        if (!clicked) console.log('⚠️ 3DS button not found after 60s');
-
-        await vhr.verifyRedirectionAndSuccess();
+        // 4. Verify Error
+        await vhr.verifyPaymentError('declined');
+        console.log('✅ 3DS failure verified.');
+        await page.close();
     });
 
     test('Subscription purchase via Stripe', async ({ page }) => {
