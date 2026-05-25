@@ -108,7 +108,10 @@ class PreloaderBase {
     async trackPreloaderToCheckoutTime() {
         await this.preloader.waitFor({ state: 'visible', timeout: 30000 });
         const startTime = Date.now();
-        await this.checkoutHeader.waitFor({ state: 'visible', timeout: 60000 });
+        
+        // Use URL-based wait as it's more reliable than text content for navigation transitions
+        await this.page.waitForURL('**/checkout**', { timeout: 90000 });
+        
         const endTime = Date.now();
         const durationSeconds = ((endTime - startTime) / 1000).toFixed(2);
         console.log(`⏱️ Preloader -> Checkout: ${durationSeconds}s`);

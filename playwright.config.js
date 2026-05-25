@@ -14,20 +14,20 @@ module.exports = defineConfig({
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'https://dev.pintonaturals.com/',
-
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
     screenshot: 'on',
     video: 'on-first-retry',
+    /* Ensure all browser contexts are incognito and start clean */
+    incognito: true,
+    storageState: undefined,
   },
 
   /* Configure projects for major browsers */
   projects: [
     {
       name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
+      use: { ...devices['Pixel 5'], incognito: true },
     },
   ],
-});
+  });
