@@ -40,10 +40,38 @@ class PreloaderBase {
         this.nameInput = page.getByRole('textbox', { name: /Enter your name/i });
         this.zipInput = page.getByRole('textbox', { name: /ZIP \/ Postal Code/i });
         this.payButton = page.getByRole('button', { name: /Pay \$/i });
+        this.couponInput = page.getByRole('textbox', { name: /Enter your coupon code/i });
+        this.applyButton = page.getByRole('button', { name: /Apply/i });
         
         // Refined error locator: Targets typical error containers and filters for relevant keywords
         this.stripeError = page.locator('#error-message, .StripeElement--invalid, [role="alert"], .error-text')
             .filter({ hasText: /card|declined|expired|invalid|number|cvc|expiry|stolen/i });
+    }
+
+    async applyCoupon(couponCode) {
+        console.log(`🎟️ Applying coupon: ${couponCode}`);
+        
+        // Wait for the discount API call
+        const [response] = await Promise.all([
+            this.page.waitForResponse(resp => resp.url().includes('/api/get-discount') && resp.status() === 200),
+            this.couponInput.fill(couponCode),
+            this.applyButton.click()
+        ]);
+        
+        const json = await response.json();
+        console.log(`✅ Coupon Discount API Response: ${JSON.stringify(json, null, 2)}`);
+        
+        // Wait for UI to stabilize and Stripe frames to re-initialize
+        console.log('⏳ Waiting for Stripe frames to re-initialize after coupon application...');
+        await this.page.waitForTimeout(3000);
+        
+        // Explicitly check for iframe stability before returning
+        const cardFrame = this.page.frameLocator('iframe[title*="Secure card number input frame"]');
+        await cardFrame.locator('body').waitFor({ state: 'attached', timeout: 15000 });
+        
+        // Ensure checkout fields are ready
+        await expect(this.nameInput).toBeVisible({ timeout: 15000 });
+        console.log('✅ Coupon applied and Stripe form stabilized.');
     }
 
     async setupApiCaptures() {
@@ -100,13 +128,17 @@ class PreloaderBase {
     }
 
     async fillStripeDetails(card) {
+        // Wait specifically for Stripe iFrames to be fully attached
         const cardFrame = this.page.frameLocator('iframe[title*="Secure card number input frame"]');
+        await cardFrame.locator('body').waitFor({ state: 'attached', timeout: 15000 });
         await cardFrame.getByRole('textbox', { name: /Card number/i }).fill(card.number);
 
         const expiryFrame = this.page.frameLocator('iframe[title*="Secure expiration date input frame"]');
+        await expiryFrame.locator('body').waitFor({ state: 'attached', timeout: 15000 });
         await expiryFrame.getByRole('textbox', { name: /Expiration date/i }).fill(card.expiry);
 
         const cvcFrame = this.page.frameLocator('iframe[title*="Secure CVC input frame"]');
+        await cvcFrame.locator('body').waitFor({ state: 'attached', timeout: 15000 });
         await cvcFrame.getByRole('textbox', { name: /CVC/i }).fill(card.cvc);
     }
 
@@ -180,6 +212,18 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
 
         await sticker.performCheckout('Shahnawaz', '26556', DataGenerator.getCards().success);
         await sticker.verifyRedirectionAndSuccess();
+    });
+
+    test('Stripe Success with coupon', async ({ page }) => {
+        const vhr = new PreloaderVerification(page);
+        await vhr.setupApiCaptures();
+        await vhr.navigateToPreview(DataGenerator.getRandomVIN());
+        await vhr.performPreloaderCheck(DataGenerator.getUniqueEmail());
+        await vhr.trackPreloaderToCheckoutTime();
+
+        await vhr.applyCoupon('offer20');
+        await vhr.performCheckout('Shahnawaz', '26556', DataGenerator.getCards().success);
+        await vhr.verifyRedirectionAndSuccess();
     });
 
     const failureScenarios = [
