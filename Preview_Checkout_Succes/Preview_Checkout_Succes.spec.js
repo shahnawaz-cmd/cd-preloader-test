@@ -138,16 +138,18 @@ class PreloaderBase {
         await cvcFrame.getByRole('textbox', { name: /CVC/i }).fill(card.cvc);
     }
 
-    async performCheckout(name, zip, card) {
+    async performCheckout(name, zip, card, submitButtonLocator = null) {
         console.log(`🛍️ Submitting Checkout with card ending in ${card.number.slice(-4)}...`);
         await expect(this.nameInput).toBeVisible({ timeout: 15000 });
         await this.nameInput.fill(name);
         await this.fillStripeDetails(card);
         await this.zipInput.fill(zip);
         
+        const buttonToClick = submitButtonLocator || this.payButton;
+        
         // Ensure the button is enabled before clicking
-        await expect(this.payButton).toBeEnabled({ timeout: 20000 });
-        await this.payButton.click();
+        await expect(buttonToClick).toBeEnabled({ timeout: 20000 });
+        await buttonToClick.click();
     }
 
     async verifyRedirectionAndSuccess() {
@@ -182,9 +184,18 @@ class BuildSheet extends PreloaderBase {
         super(page);
         this.historyButton = page.getByRole('button', { name: /Access Build Sheet/i });
     }
+    async selectReportOption() {
+        const reportOption = this.page.locator('label:nth-child(6) > div > .flex.flex-wrap.items-center.rounded > .w-6');
+        if (await reportOption.isVisible()) {
+            await reportOption.click();
+            console.log('✅ Report option selected.');
+        }
+    }
+
     async navigateToPreview(vin) {
         await this.page.goto(`https://dev.pintonaturals.com/preview?vin=${vin}&locale=en&wpPage=homepage&type=sticker`);
         await this.page.waitForLoadState('networkidle').catch(() => {});
+        await this.selectReportOption();
     }
 }
 
@@ -223,6 +234,38 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
         await vhr.applyCoupon('offer20');
         await vhr.performCheckout('Shahnawaz', '26556', DataGenerator.getCards().success);
         await vhr.verifyRedirectionAndSuccess();
+    });
+
+    test('Subscription purchase via Stripe', async ({ page }) => {
+        const sticker = new BuildSheet(page);
+        await sticker.setupApiCaptures();
+        await sticker.navigateToPreview(DataGenerator.getRandomVIN());
+
+        // 2. Select plan: "Unlimited Buildsheets"
+        const planLabel = page.locator('label[for="option-CDSTSC"]');
+        await planLabel.waitFor({ state: 'visible' });
+        await planLabel.click();
+
+        // 3. Access Build Sheet
+        await page.getByRole('button', { name: 'Access Build Sheet' }).click();
+
+        // 4. Perform Preloader Flow (Unique Email)
+        const uniqueEmail = DataGenerator.getUniqueEmail();
+        await page.getByRole('textbox', { name: /Email Address/i }).fill(uniqueEmail);
+        await page.getByRole('button', { name: /Proceed to Checkout/i }).click();
+
+        // 5. Track Preloader Time
+        await sticker.trackPreloaderToCheckoutTime();
+
+        // 6. Apply wrong coupon and wait 2 seconds
+        console.log('🛍️ Applying wrong coupon...');
+        await page.getByRole('textbox', { name: 'Enter your coupon code' }).fill('get20');
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await page.waitForTimeout(2000);
+        
+        // 7. Perform robust checkout using the established BuildSheet method
+        await sticker.performCheckout('test subscription', '748965', DataGenerator.getCards().success, page.getByRole('button', { name: /Subscribe \$/i }));
+        await sticker.verifyRedirectionAndSuccess();
     });
 
     const failureScenarios = [
