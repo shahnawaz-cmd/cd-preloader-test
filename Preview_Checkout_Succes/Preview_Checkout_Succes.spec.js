@@ -17,6 +17,7 @@ class DataGenerator {
     static getCards() {
         return {
             success: { number: '4242424242424242', expiry: '12/26', cvc: '123' },
+            threeDS: { number: '4000000000003220', expiry: '12/26', cvc: '123' },
             declined: { number: '4000000000000002', expiry: '12/26', cvc: '123' },
             insufficientFunds: { number: '4000000000009995', expiry: '12/26', cvc: '123' },
             stolen: { number: '4000000000009979', expiry: '12/26', cvc: '123' },
@@ -257,6 +258,47 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
 
         await vhr.applyCoupon('offer20');
         await vhr.performCheckout('Shahnawaz', '26556', DataGenerator.getCards().success);
+        await vhr.verifyRedirectionAndSuccess();
+    });
+
+    test('VHR: Checkout SUCCESS with 3D Secure', async ({ page }) => {
+        const vhr = new PreloaderVerification(page);
+        await vhr.setupApiCaptures();
+        await vhr.navigateToPreview(DataGenerator.getRandomVIN());
+        await vhr.performPreloaderCheck(DataGenerator.getUniqueEmail());
+        await vhr.trackPreloaderToCheckoutTime();
+
+        // 1. Fill Name & Stripe Details
+        console.log('🛍️ Filling checkout details...');
+        await page.getByRole('textbox', { name: 'Enter your name' }).fill('Shahnawaz');
+        await vhr.fillStripeDetails({ number: '4000 0027 6000 3184', expiry: '02 / 66', cvc: '265' });
+        await vhr.zipInput.fill('74900');
+        await vhr.payButton.click();
+
+        // 2. Robust 3DS Challenge handling via polling
+        console.log('🛡️ Handling 3DS Challenge via polling...');
+        let clicked = false;
+        await new Promise((resolve) => {
+            const check = async () => {
+                for (const f of page.frames()) {
+                    try {
+                        const el = await f.getByRole('button', { name: 'Complete' });
+                        if (await el.isVisible()) {
+                            await el.click();
+                            clicked = true;
+                            console.log(`✅ 3DS 'Complete' clicked in frame: ${f.url().substring(0, 50)}`);
+                            return resolve();
+                        }
+                    } catch (_) {}
+                }
+            };
+            page.on('frameattached', check);
+            const interval = setInterval(check, 1000);
+            setTimeout(() => { clearInterval(interval); resolve(); }, 60000);
+        });
+
+        if (!clicked) console.log('⚠️ 3DS button not found after 60s');
+
         await vhr.verifyRedirectionAndSuccess();
     });
 
