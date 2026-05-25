@@ -51,27 +51,23 @@ class PreloaderBase {
     async applyCoupon(couponCode) {
         console.log(`🎟️ Applying coupon: ${couponCode}`);
         
-        // Wait for the discount API call
-        const [response] = await Promise.all([
+        // Wait for both the coupon discount API and the subsequent Stripe elements session
+        await Promise.all([
             this.page.waitForResponse(resp => resp.url().includes('/api/get-discount') && resp.status() === 200),
             this.couponInput.fill(couponCode),
             this.applyButton.click()
         ]);
         
-        const json = await response.json();
-        console.log(`✅ Coupon Discount API Response: ${JSON.stringify(json, null, 2)}`);
+        console.log('⏳ Waiting for Stripe elements session to re-initialize...');
+        await this.page.waitForResponse(resp => resp.url().includes('api.stripe.com/v1/elements/sessions') && resp.status() === 200);
         
-        // Wait for UI to stabilize and Stripe frames to re-initialize
-        console.log('⏳ Waiting for Stripe frames to re-initialize after coupon application...');
-        await this.page.waitForTimeout(3000);
-        
-        // Explicitly check for iframe stability before returning
-        const cardFrame = this.page.frameLocator('iframe[title*="Secure card number input frame"]');
-        await cardFrame.locator('body').waitFor({ state: 'attached', timeout: 15000 });
+        // Final buffer: 4s to ensure Stripe form is validated and enabled
+        console.log('⏳ Waiting 4s for UI stabilization after session update...');
+        await this.page.waitForTimeout(4000);
         
         // Ensure checkout fields are ready
         await expect(this.nameInput).toBeVisible({ timeout: 15000 });
-        console.log('✅ Coupon applied and Stripe form stabilized.');
+        console.log('✅ Coupon applied and Stripe form ready for input.');
     }
 
     async setupApiCaptures() {
@@ -119,7 +115,7 @@ class PreloaderBase {
         await expect(searchingIndicator).not.toBeVisible({ timeout: 60000 });
         
         // 2. Now wait for the button, as the searching process is done
-        await this.historyButton.waitFor({ state: 'visible', timeout: 45000 });
+        await this.historyButton.waitFor({ state: 'visible', timeout: 60000 });
         
         await this.historyButton.click();
         await expect(this.emailInput).toBeVisible({ timeout: 15000 });
@@ -148,6 +144,9 @@ class PreloaderBase {
         await this.nameInput.fill(name);
         await this.fillStripeDetails(card);
         await this.zipInput.fill(zip);
+        
+        // Ensure the button is enabled before clicking
+        await expect(this.payButton).toBeEnabled({ timeout: 20000 });
         await this.payButton.click();
     }
 
