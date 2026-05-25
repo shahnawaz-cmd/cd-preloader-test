@@ -421,6 +421,37 @@ test.describe('Pintonaturals End-to-End VHR Checkout Scenarios', () => {
     //     console.log('✅ PASS — User was not prompted to checkout again (duplicate blocked/session maintained)');
     // });
 
+    test('Slow network (3G) checkout', async ({ page, context }) => {
+        const vhr = new PreloaderVerification(page);
+        
+        // Emulate 3G: ~750kbps down, ~250kbps up, 100ms latency
+        const client = await context.newCDPSession(page);
+        await client.send('Network.emulateNetworkConditions', {
+            offline: false,
+            downloadThroughput: (750 * 1024) / 8,
+            uploadThroughput: (250 * 1024) / 8,
+            latency: 100
+        });
+        console.log('🐢 3G network throttling enabled');
+
+        await vhr.setupApiCaptures();
+        await vhr.navigateToPreview(DataGenerator.getRandomVIN());
+        await vhr.performPreloaderCheck(DataGenerator.getUniqueEmail());
+        await vhr.trackPreloaderToCheckoutTime();
+
+        await vhr.performCheckout('Shahnawaz', '26556', DataGenerator.getCards().success);
+        await vhr.verifyRedirectionAndSuccess();
+
+        // Disable throttling
+        await client.send('Network.emulateNetworkConditions', {
+            offline: false,
+            downloadThroughput: -1,
+            uploadThroughput: -1,
+            latency: 0
+        });
+        console.log('✅ 3G throttling disabled');
+    });
+
     const failureScenarios = [
         { name: 'Declined Card', card: DataGenerator.getCards().declined, expectedError: 'declined' },
         { name: 'Insufficient Funds', card: DataGenerator.getCards().insufficientFunds, expectedError: 'declined' },
