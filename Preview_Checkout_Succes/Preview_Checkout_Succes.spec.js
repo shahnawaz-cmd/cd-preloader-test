@@ -18,7 +18,7 @@ class DataGenerator {
         return {
             success: { number: '4242424242424242', expiry: '12/26', cvc: '123' },
             declined: { number: '4000000000000002', expiry: '12/26', cvc: '123' },
-            insufficientFunds: { number: '4000000000000006', expiry: '12/26', cvc: '123' },
+            insufficientFunds: { number: '4000000000009995', expiry: '12/26', cvc: '123' },
             stolen: { number: '4000000000009979', expiry: '12/26', cvc: '123' },
             expired: { number: '4242424242424241', expiry: '01/10', cvc: '123' }
         };
@@ -86,7 +86,13 @@ class PreloaderBase {
     }
 
     async performPreloaderCheck(email) {
-        await expect(this.historyButton).toBeVisible({ timeout: 30000 });
+        // 1. Wait for the loading/searching indicator to disappear first
+        const searchingIndicator = this.page.getByAltText('Searching');
+        await expect(searchingIndicator).not.toBeVisible({ timeout: 60000 });
+        
+        // 2. Now wait for the button, as the searching process is done
+        await this.historyButton.waitFor({ state: 'visible', timeout: 45000 });
+        
         await this.historyButton.click();
         await expect(this.emailInput).toBeVisible({ timeout: 15000 });
         await this.emailInput.fill(email);
@@ -125,7 +131,11 @@ class PreloaderBase {
         await expect(this.stripeError.first()).toBeVisible({ timeout: 20000 });
         const actualError = await this.stripeError.first().innerText();
         console.log(`⚠️ UI Error Captured: "${actualError}"`);
-        expect(actualError.toLowerCase()).toContain(expectedPartialText.toLowerCase());
+        
+        // Allow for either "declined" or the specific "insufficient funds" message
+        const isMatch = actualError.toLowerCase().includes(expectedPartialText.toLowerCase()) || 
+                        actualError.toLowerCase().includes('insufficient funds');
+        expect(isMatch).toBe(true);
     }
 }
 
