@@ -89,12 +89,17 @@ class PreloaderBase {
                 } catch (e) {}
             }
             
-            // Capture Update Payment (Should NOT be called in failure cases)
+            // Capture Update Payment
             if (url.includes('api/update-payment')) {
                 try {
                     const json = await response.json();
                     console.log(`\n🟩 [UPDATE PAYMENT RESPONSE] URL: ${url}`);
-                } catch (e) {}
+                    console.log(JSON.stringify(json, null, 2));
+                } catch (e) {
+                    console.log(`\n⚠️ [UPDATE PAYMENT FAILED TO PARSE JSON] URL: ${url}`);
+                    const text = await response.text();
+                    console.log(`Raw response: ${text}`);
+                }
             }
         });
     }
@@ -174,8 +179,18 @@ class PreloaderBase {
 
 class PreloaderVerification extends PreloaderBase {
     async navigateToPreview(vin) {
-        await this.page.goto(`https://dev.pintonaturals.com/preview?vin=${vin}&locale=en&wpPage=homepage&type=vhr`);
-        await this.page.waitForLoadState('networkidle').catch(() => {});
+        const url = `https://dev.pintonaturals.com/preview?vin=${vin}&locale=en&wpPage=homepage&type=vhr`;
+        for (let i = 0; i < 3; i++) {
+            try {
+                await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                // Ensure the page has had a moment to trigger network calls
+                await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+                return;
+            } catch (e) {
+                console.log(`⚠️ Navigation attempt ${i + 1} failed, retrying...`);
+                if (i === 2) throw e;
+            }
+        }
     }
 }
 
@@ -193,9 +208,18 @@ class BuildSheet extends PreloaderBase {
     }
 
     async navigateToPreview(vin) {
-        await this.page.goto(`https://dev.pintonaturals.com/preview?vin=${vin}&locale=en&wpPage=homepage&type=sticker`);
-        await this.page.waitForLoadState('networkidle').catch(() => {});
-        await this.selectReportOption();
+        const url = `https://dev.pintonaturals.com/preview?vin=${vin}&locale=en&wpPage=homepage&type=sticker`;
+        for (let i = 0; i < 3; i++) {
+            try {
+                await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                await this.page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+                await this.selectReportOption();
+                return;
+            } catch (e) {
+                console.log(`⚠️ Navigation attempt ${i + 1} failed, retrying...`);
+                if (i === 2) throw e;
+            }
+        }
     }
 }
 
