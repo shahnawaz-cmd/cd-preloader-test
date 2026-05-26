@@ -1,4 +1,5 @@
 name: Playwright Tests
+# Trigger commit to initialize smart filtering
 on:
   push:
     branches: [ main, master ]
