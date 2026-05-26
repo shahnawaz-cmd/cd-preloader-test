@@ -5,13 +5,26 @@ const { test, expect } = require('@playwright/test');
  */
 class DataGenerator {
     static getRandomVIN() {
-        const baseVIN = '2G37M2P21308';
-        const randomDigit = Math.floor(Math.random() * 10).toString();
-        return baseVIN + randomDigit;
+        // Base VIN: 2G37M2P213086
+        let vin = '2G37M2P213086'.split('');
+        const digitPositions = [0, 2, 3, 7, 8, 9, 10, 11, 12];
+        
+        // Randomly change 4 numeric positions
+        for (let i = 0; i < 4; i++) {
+            const idx = Math.floor(Math.random() * digitPositions.length);
+            const pos = digitPositions.splice(idx, 1)[0];
+            vin[pos] = Math.floor(Math.random() * 10).toString();
+        }
+        return vin.join('');
     }
 
     static getUniqueEmail() {
-        return `test_${Date.now()}@preloader.com`;
+        const firstNames = ['james', 'mary', 'robert', 'patricia', 'john', 'jennifer', 'michael', 'linda', 'william', 'elizabeth'];
+        const lastNames = ['smith', 'johnson', 'williams', 'brown', 'jones', 'garcia', 'miller', 'davis', 'rodriguez', 'martinez'];
+        const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+        const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+        const randomNum = Math.floor(Math.random() * 900) + 100;
+        return `${firstName}.${lastName}${randomNum}@gmail.com`;
     }
 }
 
@@ -155,50 +168,48 @@ class PreloaderBase {
 
         let clicked = false;
         const startTimeApproval = Date.now();
-        while (!clicked && (Date.now() - startTimeApproval < 180000)) { // Extended timeout to 3m
-            // 1. Explicitly check for the "Things don't appear to be working" error screen
-            const currentPopupUrl = popup.url();
-            if (currentPopupUrl.includes('genericError') || currentPopupUrl.includes('RETRY')) {
-                console.log('❌ PayPal Sandbox Error detected (RETRY). Attempting recovery...');
-                const tryAgainLink = popup.locator('a.btn.full:has-text("Try again"), a:has-text("Try again")').first();
-                if (await tryAgainLink.isVisible()) {
-                    await tryAgainLink.click();
-                    console.log('⏳ Recovery clicked. Waiting for reload...');
-                    await popup.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
-                    await this.page.waitForTimeout(5000); // Give sandbox extra time to settle
-                    continue; // Re-scan frames after reload
+        while (!clicked && (Date.now() - startTimeApproval < 180000)) {
+            // Priority 1: Detect and handle the "genericError" page immediately
+            const currentUrl = popup.url();
+            if (currentUrl.includes('genericError') || currentUrl.includes('RETRY')) {
+                console.log('❌ PayPal "genericError" URL detected. Attempting recovery...');
+                const tryAgainBtn = popup.locator('text=/Try again/i').first();
+                if (await tryAgainBtn.isVisible()) {
+                    await tryAgainBtn.click({ force: true });
+                    console.log('⏳ Recovery button clicked. Waiting for sandbox to reset...');
+                    await this.page.waitForTimeout(5000);
+                    continue; 
                 }
             }
 
+            // Priority 2: Look for the submit button in all frames
             const frames = popup.frames();
             for (const f of frames) {
                 try {
-                    // Also check for "Try again" inside frames
-                    const tryAgainInFrame = f.getByRole('link', { name: /Try again/i });
-                    if (await tryAgainInFrame.isVisible()) {
-                        console.log('⚠️ PayPal "Try again" found in frame. Recovering...');
-                        await tryAgainInFrame.click();
-                        await popup.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-                        break; 
-                    }
-
                     const el = f.getByTestId('submit-button-initial');
                     if (await el.isVisible() && await el.isEnabled()) {
                         console.log('✅ PayPal Submit button ready. Final human delay...');
-                        await this.humanDelay(3000, 5000); // Increased delay before final critical click
+                        await this.humanDelay(3000, 5000); 
                         await el.click();
                         clicked = true;
                         console.log('✅ PayPal "Complete" button clicked.');
                         break; 
                     }
-                } catch (e) {
-                    // Frame might be detached/reloading
-                }
+                    
+                    // Also check for "Try again" in frames as fallback
+                    const tryAgainInFrame = f.locator('text=/Try again/i').first();
+                    if (await tryAgainInFrame.isVisible()) {
+                        console.log('⚠️ "Try again" found in frame. Recovering...');
+                        await tryAgainInFrame.click({ force: true });
+                        await this.page.waitForTimeout(5000);
+                        break;
+                    }
+                } catch (e) {}
             }
             if (!clicked) await this.page.waitForTimeout(3000);
         }
 
-        if (!clicked) console.log('⚠️ PayPal Approval failed after recovery attempts.');
+        if (!clicked) console.log('⚠️ PayPal Approval failed after 180s.');
         await updatePaymentPromise;
     }
 }
