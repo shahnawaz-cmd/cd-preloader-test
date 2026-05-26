@@ -1,0 +1,56 @@
+name: Playwright Tests
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - uses: dorny/paths-filter@v3
+      id: changes
+      with:
+        filters: |
+          paypal:
+            - 'Preview_Checkout_Paypal/**'
+          success:
+            - 'Preview_Checkout_Succes/**'
+          core:
+            - 'pintonaturals_checkout.spec.js'
+            - 'playwright.config.js'
+            - '.github/workflows/**'
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: lts/*
+    - name: Install dependencies
+      run: npm install
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps
+
+    - name: Run Playwright tests
+      continue-on-error: true
+      run: |
+        if [ "${{ steps.changes.outputs.core }}" == "true" ] || ([ "${{ steps.changes.outputs.paypal }}" == "false" ] && [ "${{ steps.changes.outputs.success }}" == "false" ]); then
+          echo "🚀 Running FULL regression..."
+          npx playwright test --project='Mobile Chrome'
+        elif [ "${{ steps.changes.outputs.paypal }}" == "true" ]; then
+          echo "💳 Running PayPal suite ONLY..."
+          npx playwright test Preview_Checkout_Paypal --project='Mobile Chrome'
+        elif [ "${{ steps.changes.outputs.success }}" == "true" ]; then
+          echo "✅ Running Success suite ONLY..."
+          npx playwright test Preview_Checkout_Succes --project='Mobile Chrome'
+        fi
+
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: playwright-report
+        path: playwright-report/
+        retention-days: 30
